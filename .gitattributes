@@ -1,0 +1,19 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# PHP files
+*.php text eol=lf
+
+# Windows-specific scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+
+# Exclude development files from release archives
+/.gitattributes export-ignore
+/.gitignore     export-ignore
+/.env.example   export-ignore

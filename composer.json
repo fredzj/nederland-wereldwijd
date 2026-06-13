@@ -1,0 +1,30 @@
+{
+    "name": "fredonis/nederland-wereldwijd",
+    "description": "Haalt landen, reisadviezen en nood-informatie op bij de open data API van Nederland Wereldwijd en slaat deze op in een MariaDB-database.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "NederlandWereldwijd\\": "src/"
+        }
+    },
+    "bin": [
+        "bin/import.php"
+    ],
+    "scripts": {
+        "import": "php bin/import.php all",
+        "import:countries": "php bin/import.php countries",
+        "import:traveladvice": "php bin/import.php traveladvice",
+        "import:emergency": "php bin/import.php emergency"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
