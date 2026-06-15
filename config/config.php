@@ -25,4 +25,9 @@ return [
         'retries'     => Env::getInt('HTTP_RETRIES', 3),
         'throttle_ms' => Env::getInt('HTTP_THROTTLE_MS', 150),
     ],
+    'widget_api' => [
+        // Gedeeld geheim waarmee de insluitbare widget zich bij de private
+        // backend-API authenticeert. Stel WIDGET_API_TOKEN in via .env.
+        'token' => Env::get('WIDGET_API_TOKEN', ''),
+    ],
 ];

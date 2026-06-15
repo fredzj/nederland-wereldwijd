@@ -8,7 +8,7 @@ declare(strict_types=1);
  * ===========================================================================
  *
  * Plak dit hele bestand op een ander domein (of include het in een PHP-pagina).
- * Het maakt rechtstreeks verbinding met de database en toont:
+ * Het haalt de gegevens op via de private backend-API (widget-api.php) en toont:
  *
  *   1. Alleen de landen waarvan de ISO-code in $NW_WHITELIST staat;
  *   2. Per land: kaart (map) + landnaam + datum laatste wijziging;
@@ -18,10 +18,11 @@ declare(strict_types=1);
  *   - Standaard overzicht:           widget.php
  *   - Eén land tonen:                widget.php?nw_iso=ESP
  *
- * LET OP: vul hieronder de juiste *externe* databasegegevens in. Een database
- * is meestal niet bereikbaar via 127.0.0.1 vanaf een ander domein; gebruik de
- * hostnaam/het IP dat je hostingprovider voor externe verbindingen opgeeft en
- * zorg dat de DB-gebruiker remote-toegang heeft.
+ * LET OP: deze widget maakt GEEN directe databaseverbinding meer. Vul hieronder
+ * de URL van de backend-API in (het bestand public/widget-api.php op de server
+ * waar de database staat) plus het gedeelde token (WIDGET_API_TOKEN). De widget
+ * praat uitsluitend via HTTPS met die API; de databasegegevens blijven privé op
+ * de server staan.
  */
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,18 @@ declare(strict_types=1);
  */
 $NW_WHITELIST_DEFAULT = ['ESP', 'FRA', 'DEU', 'ITA', 'USA'];
 
-$NW_DB = [
-    'host'     => '127.0.0.1',        // bijv. 'mysql.jouwhost.nl' of een IP
-    'port'     => 3306,
-    'name'     => 'u10919p130675_nederlandwereldwijd',
-    'user'     => 'u10919p130675_nederlandwereldwijd_remote',
-    'password' => 'KZkUYDZJDG3qAKfd77jB',
-    'charset'  => 'utf8mb4',
+/**
+ * Verbinding met de private backend-API.
+ *
+ * - 'base_url' is de volledige URL naar public/widget-api.php op de server waar
+ *   de database draait (bij voorkeur via HTTPS).
+ * - 'token' is het gedeelde geheim dat overeenkomt met WIDGET_API_TOKEN in de
+ *   .env van die server.
+ */
+$NW_API = [
+    'base_url' => 'https://travlr.nl/nederland-wereldwijd/widget-api.php',
+    'token'    => 'a52500719b42e15a56cab343d262889ed516cd472ed9a4bbd20024d8a71c31c1PS',
+    'timeout'  => 10,
 ];
 
 /** Naam van de GET-parameter waarmee een land wordt geselecteerd. */
@@ -56,34 +62,88 @@ const NW_PARAM = 'nw_iso';
 const NW_WHITELIST_PARAM = 'nw_landen';
 
 // ---------------------------------------------------------------------------
-// 2) Databaseverbinding.
+// 2) Backend-API-client.
 // ---------------------------------------------------------------------------
 
 /**
- * @return PDO
+ * Roept de private backend-API aan en geeft de gedecodeerde JSON terug.
+ *
+ * @param array<string, string> $params
+ *
+ * @return array<string, mixed>
+ *
+ * @throws RuntimeException bij verbindings-, HTTP- of decodeerfouten.
  */
-function nw_db(array $cfg): PDO
+function nw_api_get(array $cfg, string $action, array $params): array
 {
-    static $pdo = null;
-    if ($pdo instanceof PDO) {
-        return $pdo;
+    $base = (string) ($cfg['base_url'] ?? '');
+    if ($base === '') {
+        throw new RuntimeException('De backend-API is niet geconfigureerd (base_url ontbreekt).');
     }
 
-    $dsn = sprintf(
-        'mysql:host=%s;port=%d;dbname=%s;charset=%s',
-        $cfg['host'],
-        (int) $cfg['port'],
-        $cfg['name'],
-        $cfg['charset'],
-    );
+    $query = http_build_query(['action' => $action] + $params);
+    $url   = $base . (str_contains($base, '?') ? '&' : '?') . $query;
 
-    $pdo = new PDO($dsn, $cfg['user'], $cfg['password'], [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
+    $token   = (string) ($cfg['token'] ?? '');
+    $timeout = (int) ($cfg['timeout'] ?? 10);
 
-    return $pdo;
+    $body   = null;
+    $status = 0;
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_HTTPHEADER     => [
+                'Accept: application/json',
+                'Authorization: Bearer ' . $token,
+            ],
+        ]);
+        $body   = curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $errno  = curl_errno($ch);
+        $error  = curl_error($ch);
+        curl_close($ch);
+
+        if ($body === false || $errno !== 0) {
+            throw new RuntimeException('Kan de backend-API niet bereiken: ' . $error);
+        }
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'method'        => 'GET',
+                'timeout'       => $timeout,
+                'ignore_errors' => true,
+                'header'        => "Accept: application/json\r\n"
+                    . 'Authorization: Bearer ' . $token . "\r\n",
+            ],
+        ]);
+        $body = @file_get_contents($url, false, $context);
+        if ($body === false) {
+            throw new RuntimeException('Kan de backend-API niet bereiken.');
+        }
+        if (isset($http_response_header[0]) && preg_match('#\s(\d{3})\s#', $http_response_header[0], $m) === 1) {
+            $status = (int) $m[1];
+        }
+    }
+
+    if ($status < 200 || $status >= 300) {
+        $message = 'API-fout (HTTP ' . $status . ').';
+        $decoded = json_decode((string) $body, true);
+        if (is_array($decoded) && isset($decoded['error']) && is_string($decoded['error'])) {
+            $message = $decoded['error'];
+        }
+        throw new RuntimeException($message);
+    }
+
+    try {
+        $data = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        throw new RuntimeException('Ongeldig antwoord van de backend-API.');
+    }
+
+    return is_array($data) ? $data : [];
 }
 
 // ---------------------------------------------------------------------------
@@ -93,18 +153,6 @@ function nw_db(array $cfg): PDO
 function nw_e(?string $value): string
 {
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
-
-function nw_decode_json(?string $json): mixed
-{
-    if ($json === null || $json === '') {
-        return null;
-    }
-    try {
-        return json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-    } catch (JsonException) {
-        return null;
-    }
 }
 
 /** Bootstrap-kleur voor de classificatie van een reisadvies. */
@@ -264,46 +312,6 @@ function nw_sanitize_node(DOMNode $node, array $allowed): void
     }
 }
 
-/**
- * Haalt de kaart uit de `files`-array van een reisadvies voor het overzicht.
- * De "standard" kaart (app-versie) heeft de voorkeur; anders de eerste
- * beschikbare afbeelding.
- *
- * @return array{url:string,title:string}|null
- */
-function nw_first_map(mixed $files): ?array
-{
-    if (!is_array($files)) {
-        return null;
-    }
-
-    $fallback = null;
-
-    foreach ($files as $file) {
-        if (!is_array($file)) {
-            continue;
-        }
-        $url = isset($file['fileurl']) && is_string($file['fileurl']) ? trim($file['fileurl']) : '';
-        if ($url === '' || preg_match('#^https?://#i', $url) !== 1) {
-            continue;
-        }
-        $mime = is_string($file['mimetype'] ?? null) ? strtolower($file['mimetype']) : '';
-        if (!str_starts_with($mime, 'image/')) {
-            continue;
-        }
-        $title   = is_string($file['filetitle'] ?? null) ? $file['filetitle'] : 'Kaart';
-        $mapType = is_string($file['mapType'] ?? null) ? strtolower($file['mapType']) : '';
-
-        if ($mapType === 'standard') {
-            return ['url' => $url, 'title' => $title];
-        }
-
-        $fallback ??= ['url' => $url, 'title' => $title];
-    }
-
-    return $fallback;
-}
-
 /** Rendert alle bestanden (kaarten/afbeeldingen/links) van een reisadvies. */
 function nw_render_files(mixed $files): string
 {
@@ -396,60 +404,15 @@ if ($nwSelected !== '' && !in_array($nwSelected, $NW_WHITELIST, true)) {
 }
 
 try {
-    $pdo = nw_db($NW_DB);
-
     if ($NW_WHITELIST !== []) {
-        $place = implode(',', array_fill(0, count($NW_WHITELIST), '?'));
-
-        // Landen + datum laatste wijziging (max over de reisadviezen).
-        $stmt = $pdo->prepare(
-            "SELECT c.iso_code, c.location,
-                    COALESCE(MAX(t.last_modified_at), c.updated_at) AS last_update
-             FROM countries c
-             LEFT JOIN travel_advices t ON t.country_iso_code = c.iso_code
-             WHERE c.iso_code IN ($place)
-             GROUP BY c.iso_code, c.location, c.updated_at
-             ORDER BY c.location"
-        );
-        $stmt->execute($NW_WHITELIST);
-        $nwCountries = $stmt->fetchAll();
-
-        // Eén kaart per land bepalen (uit de files van de reisadviezen).
-        foreach ($nwCountries as &$row) {
-            $fstmt = $pdo->prepare(
-                'SELECT files FROM travel_advices
-                 WHERE country_iso_code = ? AND files IS NOT NULL AND files <> ""
-                 ORDER BY last_modified_at DESC'
-            );
-            $fstmt->execute([$row['iso_code']]);
-            $row['map'] = null;
-            foreach ($fstmt->fetchAll() as $f) {
-                $map = nw_first_map(nw_decode_json($f['files']));
-                if ($map !== null) {
-                    $row['map'] = $map;
-                    break;
-                }
-            }
-        }
-        unset($row);
+        $overview    = nw_api_get($NW_API, 'countries', ['whitelist' => implode(',', $NW_WHITELIST)]);
+        $nwCountries = is_array($overview['countries'] ?? null) ? $overview['countries'] : [];
     }
 
     if ($nwSelected !== '') {
-        $stmt = $pdo->prepare('SELECT * FROM countries WHERE iso_code = ?');
-        $stmt->execute([$nwSelected]);
-        $nwCountry = $stmt->fetch() ?: null;
-
-        if ($nwCountry !== null) {
-            $stmt = $pdo->prepare(
-                'SELECT id, title, introduction, classification, content, files,
-                        location, last_modified_at
-                 FROM travel_advices
-                 WHERE country_iso_code = ?
-                 ORDER BY title'
-            );
-            $stmt->execute([$nwSelected]);
-            $nwAdvices = $stmt->fetchAll();
-        }
+        $detail    = nw_api_get($NW_API, 'country', ['iso' => $nwSelected]);
+        $nwCountry = is_array($detail['country'] ?? null) ? $detail['country'] : null;
+        $nwAdvices = is_array($detail['advices'] ?? null) ? $detail['advices'] : [];
     }
 } catch (Throwable $e) {
     $nwError = $e->getMessage();
@@ -509,8 +472,8 @@ function nw_url(string $iso): string
     <?php else: ?>
         <?php foreach ($nwAdvices as $advice): ?>
             <?php
-            $content = nw_render_content(nw_decode_json($advice['content']));
-            $files   = nw_render_files(nw_decode_json($advice['files']));
+            $content = nw_render_content($advice['content'] ?? null);
+            $files   = nw_render_files($advice['files'] ?? null);
             ?>
             <article class="nw-advice">
                 <h3><?= nw_e($advice['title'] ?? 'Reisadvies') ?></h3>
