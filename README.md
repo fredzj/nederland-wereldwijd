@@ -95,7 +95,7 @@ periodiek (bijv. via cron) opnieuw draaien om de gegevens actueel te houden.
 ## Databasetabellen
 
 - **`countries`** – landen met ISO-code, naam en bron-URL's.
-- **`travel_advices`** – reisadviezen met inhoud, kleurcodering (`classification`)
+- **`travel_advice`** – reisadviezen met inhoud, kleurcodering (`classification`)
   en bijbehorende bestanden/kaarten (als JSON).
 - **`emergency_infos`** – nood-informatie ("wat te doen bij nood") met inhoud,
   locaties en talen (als JSON).

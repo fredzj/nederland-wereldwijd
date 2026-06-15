@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Laat een land kiezen en toont vervolgens de landgegevens en het bijbehorende
- * reisadvies uit de tabellen `countries` en `travel_advices`.
+ * reisadvies uit de tabellen `countries` en `travel_advice`.
  */
 
 require __DIR__ . '/_bootstrap.php';
@@ -28,7 +28,7 @@ if ($selectedIso !== '') {
     if ($country !== null) {
         $stmt = $pdo->prepare(
             'SELECT id, title, introduction, classification, content, files, location, last_modified_at
-             FROM travel_advices
+             FROM travel_advice
              WHERE country_iso_code = :iso
              ORDER BY title'
         );

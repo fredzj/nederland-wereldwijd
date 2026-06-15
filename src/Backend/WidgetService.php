@@ -41,7 +41,7 @@ final class WidgetService
             "SELECT c.iso_code, c.location,
                     COALESCE(MAX(t.last_modified_at), c.updated_at) AS last_update
              FROM countries c
-             LEFT JOIN travel_advices t ON t.country_iso_code = c.iso_code
+             LEFT JOIN travel_advice t ON t.country_iso_code = c.iso_code
              WHERE c.iso_code IN ($placeholders)
              GROUP BY c.iso_code, c.location, c.updated_at
              ORDER BY c.location"
@@ -83,7 +83,7 @@ final class WidgetService
         $stmt = $this->pdo->prepare(
             'SELECT id, title, introduction, classification, content, files,
                     location, last_modified_at
-             FROM travel_advices
+             FROM travel_advice
              WHERE country_iso_code = ?
              ORDER BY title'
         );
@@ -108,7 +108,7 @@ final class WidgetService
     private function mapForCountry(string $iso): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT files FROM travel_advices
+            'SELECT files FROM travel_advice
              WHERE country_iso_code = ? AND files IS NOT NULL AND files <> ""
              ORDER BY last_modified_at DESC'
         );

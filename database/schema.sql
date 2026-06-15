@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS `countries` (
 -- ---------------------------------------------------------------------------
 -- Reisadviezen
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS `travel_advices` (
+CREATE TABLE IF NOT EXISTS `travel_advice` (
     `id`                     VARCHAR(128) NOT NULL COMMENT 'API-id van het reisadvies',
     `country_iso_code`       VARCHAR(8)   NULL     COMMENT 'Verwijzing naar countries.iso_code',
     `type`                   VARCHAR(64)  NULL,
@@ -58,8 +58,8 @@ CREATE TABLE IF NOT EXISTS `travel_advices` (
     `created_at`             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at`             DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    KEY `idx_travel_advices_country` (`country_iso_code`),
-    KEY `idx_travel_advices_location_key` (`location_key`)
+    KEY `idx_travel_advice_country` (`country_iso_code`),
+    KEY `idx_travel_advice_location_key` (`location_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_520_ci;
 
 -- ---------------------------------------------------------------------------

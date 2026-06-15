@@ -8,7 +8,7 @@ use NederlandWereldwijd\Support\Value;
 use PDO;
 
 /**
- * Slaat reisadviezen op in de tabel `travel_advices`.
+ * Slaat reisadviezen op in de tabel `travel_advice`.
  */
 final class TravelAdviceRepository
 {
@@ -32,7 +32,7 @@ final class TravelAdviceRepository
         $isoCode = Value::string($advice, 'isocode') ?? Value::string($advice, 'isoCode');
 
         $sql = <<<'SQL'
-            INSERT INTO travel_advices (
+            INSERT INTO travel_advice (
                 id, country_iso_code, type, canonical, data_url, title,
                 introduction, location, location_key, classification,
                 modification_date, modifications, content, files,
